@@ -93,4 +93,11 @@ export const api = {
     method: 'PUT',
     body: JSON.stringify(guestData),
   }),
+
+  // Payment SePay
+  getPaymentQR: (bookingId) => fetchJson(`/payment/qr/${bookingId}`),
+  simulatePaymentWebhook: (bookingId, amountIn) => fetchJson('/payment/simulate', {
+    method: 'POST',
+    body: JSON.stringify({ bookingId, amountIn }),
+  }),
 };

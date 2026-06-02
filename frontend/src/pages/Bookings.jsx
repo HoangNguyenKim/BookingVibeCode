@@ -51,6 +51,11 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
     onConfirm: null
   });
 
+  // SePay QR Modal States
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [qrData, setQrData] = useState(null);
+  const [qrLoading, setQrLoading] = useState(false);
+
   const showConfirm = (title, message, onConfirm) => {
     setConfirmModal({
       show: true,
@@ -63,6 +68,63 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
   const toast = (message, type = 'success') => {
     window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, type } }));
   };
+
+  const handleOpenQRModal = async (bookingId) => {
+    setShowQRModal(true);
+    setQrLoading(true);
+    try {
+      const data = await api.getPaymentQR(bookingId);
+      setQrData(data);
+    } catch (err) {
+      toast(err.message || 'Lỗi lấy thông tin QR', 'error');
+      setShowQRModal(false);
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  const handleCloseQRModal = () => {
+    setShowQRModal(false);
+    setQrData(null);
+  };
+
+  const handleSimulatePayment = async () => {
+    if (!qrData) return;
+    try {
+      const res = await api.simulatePaymentWebhook(qrData.bookingId, qrData.totalAmount);
+      toast(res.message || 'Mô phỏng thanh toán thành công!', 'success');
+      setShowQRModal(false);
+      setQrData(null);
+      handleCloseDetails();
+      loadBookings();
+    } catch (err) {
+      toast(err.message || 'Lỗi mô phỏng thanh toán', 'error');
+    }
+  };
+
+  // Cơ chế Polling kiểm tra trạng thái thanh toán tự động
+  useEffect(() => {
+    let intervalId;
+    if (showQRModal && selectedBooking) {
+      intervalId = setInterval(async () => {
+        try {
+          const updatedBooking = await api.getBookingDetails(selectedBooking.id);
+          if (updatedBooking.status !== selectedBooking.status) {
+            toast(`Giao dịch thanh toán thành công! Trạng thái: ${updatedBooking.status === 'checked_out' ? 'Đã trả phòng' : 'Đã nhận phòng'}`, 'success');
+            setShowQRModal(false);
+            setQrData(null);
+            handleCloseDetails();
+            loadBookings();
+          }
+        } catch (err) {
+          console.error('Error polling booking status:', err);
+        }
+      }, 3000);
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [showQRModal, selectedBooking]);
 
   const loadBookings = async () => {
     setLoading(true);
@@ -765,18 +827,131 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
                     <button className="btn btn-primary" onClick={() => handleCheckIn(selectedBooking.id)}>
                       <LogIn size={16} /> Nhận phòng (Check-in)
                     </button>
+                    <button className="btn btn-outline" onClick={() => handleOpenQRModal(selectedBooking.id)}>
+                      <Receipt size={16} /> Đặt cọc / Trả QR
+                    </button>
                     <button className="btn btn-danger" onClick={() => handleCancelBooking(selectedBooking.id)}>
                       <XCircle size={16} /> Hủy đặt phòng
                     </button>
                   </>
                 )}
                 {selectedBooking.status === 'checked_in' && (
-                  <button className="btn btn-accent" onClick={() => handleCheckOut(selectedBooking.id)}>
-                    <LogOut size={16} /> Trả phòng & Thanh toán
-                  </button>
+                  <>
+                    <button className="btn btn-accent" onClick={() => handleCheckOut(selectedBooking.id)}>
+                      <LogOut size={16} /> Trả phòng & Tiền mặt
+                    </button>
+                    <button className="btn btn-primary" onClick={() => handleOpenQRModal(selectedBooking.id)} style={{ backgroundColor: '#006ce4' }}>
+                      <Receipt size={16} /> Thanh toán QR SePay
+                    </button>
+                  </>
                 )}
               </div>
               <button className="btn btn-outline" onClick={handleCloseDetails}>Đóng</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal QR Code SePay */}
+      {showQRModal && (
+        <div className="modal-overlay" onClick={handleCloseQRModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px', borderRadius: '8px' }}>
+            <div className="modal-header" style={{ backgroundColor: '#003580', color: 'white' }}>
+              <h3 style={{ color: 'white', margin: 0 }}>Thanh toán qua chuyển khoản QR</h3>
+              <button className="close-btn" onClick={handleCloseQRModal} style={{ color: 'white' }}>&times;</button>
+            </div>
+            
+            <div className="modal-body" style={{ textAlign: 'center', padding: '20px' }}>
+              {qrLoading ? (
+                <div style={{ padding: '40px 0' }}>
+                  <RefreshCw className="animate-spin" size={32} style={{ color: '#003580', margin: '0 auto 10px auto' }} />
+                  <p>Đang khởi tạo mã QR thanh toán...</p>
+                </div>
+              ) : qrData ? (
+                <div>
+                  <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                    Quét mã QR bằng ứng dụng Ngân hàng để thanh toán tự động
+                  </p>
+                  
+                  {/* QR Image Container */}
+                  <div style={{ 
+                    backgroundColor: 'white', 
+                    padding: '15px', 
+                    borderRadius: '8px', 
+                    display: 'inline-block',
+                    border: '1px solid var(--border-color)',
+                    marginBottom: '15px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
+                  }}>
+                    <img 
+                      src={qrData.qrUrl} 
+                      alt="VietQR SePay" 
+                      style={{ width: '240px', height: '240px', display: 'block' }} 
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        toast('Không thể tải ảnh QR. Vui lòng kiểm tra lại cấu hình ngân hàng.', 'error');
+                      }}
+                    />
+                  </div>
+
+                  {/* Payment Details Card */}
+                  <div className="confirmation-slip" style={{ borderStyle: 'solid', marginTop: '10px', textAlign: 'left', fontSize: '13px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px', padding: '10px 0' }}>
+                      <div>
+                        <span style={{ color: 'var(--text-muted)', display: 'block' }}>Ngân hàng</span>
+                        <strong style={{ fontSize: '14px' }}>{qrData.bankId}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-muted)', display: 'block' }}>Số tài khoản</span>
+                        <strong style={{ fontSize: '14px' }}>{qrData.accountNo}</strong>
+                      </div>
+                      <div style={{ gridColumn: 'span 2' }}>
+                        <span style={{ color: 'var(--text-muted)', display: 'block' }}>Chủ tài khoản</span>
+                        <strong style={{ fontSize: '14px' }}>{qrData.accountName}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-muted)', display: 'block' }}>Số tiền</span>
+                        <strong style={{ fontSize: '16px', color: '#b00' }}>{formatVND(qrData.totalAmount)}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-muted)', display: 'block' }}>Nội dung chuyển khoản</span>
+                        <strong style={{ fontSize: '16px', color: 'var(--primary-blue)', letterSpacing: '1px' }}>{qrData.description}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="alert-box info" style={{ margin: '15px 0 0 0', textAlign: 'left', fontSize: '12px' }}>
+                    ⚠️ <strong>Lưu ý:</strong> Vui lòng chuyển khoản chính xác <strong>Số tiền</strong> và <strong>Nội dung chuyển khoản</strong> như trên để hệ thống tự động xác nhận ngay tức thì (mất từ 3 - 10 giây).
+                  </div>
+
+                  {/* Developer Simulation Section */}
+                  <div style={{ 
+                    marginTop: '20px', 
+                    paddingTop: '15px', 
+                    borderTop: '1px dashed var(--border-color)',
+                    backgroundColor: '#fffbeb',
+                    borderRadius: '6px',
+                    padding: '10px'
+                  }}>
+                    <p style={{ fontSize: '11px', color: '#b25e00', margin: '0 0 8px 0', fontWeight: 'bold' }}>
+                      🛠️ KHU VỰC THỬ NGHIỆM (DEVELOPER ONLY)
+                    </p>
+                    <button 
+                      className="btn btn-outline btn-xs" 
+                      onClick={handleSimulatePayment}
+                      style={{ borderColor: '#d97706', color: '#d97706', fontWeight: '600' }}
+                    >
+                      Mô phỏng thanh toán SePay (Dev)
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p>Không có dữ liệu thanh toán.</p>
+              )}
+            </div>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border-color)' }}>
+              <button className="btn btn-outline" onClick={handleCloseQRModal} style={{ width: '100%' }}>Quay lại</button>
             </div>
           </div>
         </div>

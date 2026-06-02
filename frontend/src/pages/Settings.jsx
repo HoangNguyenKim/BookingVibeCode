@@ -16,6 +16,23 @@ function Settings() {
   const [newRoom, setNewRoom] = useState({ room_number: '', floor: '', room_type_id: '', status: 'available' });
   const [roomErrors, setRoomErrors] = useState({});
 
+  // Custom Confirm Modal State
+  const [confirmModal, setConfirmModal] = useState({
+    show: false,
+    title: '',
+    message: '',
+    onConfirm: null
+  });
+
+  const showConfirm = (title, message, onConfirm) => {
+    setConfirmModal({
+      show: true,
+      title,
+      message,
+      onConfirm
+    });
+  };
+
   const toast = (message, type = 'success') => {
     window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, type } }));
   };
@@ -99,15 +116,19 @@ function Settings() {
   };
 
   const handleDeleteRoom = async (roomId, roomNumber) => {
-    if (window.confirm(`Bạn có chắc chắn muốn xóa phòng ${roomNumber}?`)) {
-      try {
-        await api.deleteRoom(roomId);
-        toast(`Xóa thành công phòng ${roomNumber}!`, 'success');
-        loadSettingsData();
-      } catch (err) {
-        toast(err.message || 'Lỗi khi xóa phòng. Có thể phòng đã có lịch đặt trước.', 'error');
+    showConfirm(
+      'Xóa phòng',
+      `Bạn có chắc chắn muốn xóa phòng ${roomNumber} khỏi hệ thống?`,
+      async () => {
+        try {
+          await api.deleteRoom(roomId);
+          toast(`Xóa thành công phòng ${roomNumber}!`, 'success');
+          loadSettingsData();
+        } catch (err) {
+          toast(err.message || 'Lỗi khi xóa phòng. Có thể phòng đã có lịch đặt trước.', 'error');
+        }
       }
-    }
+    );
   };
 
   const formatVND = (amount) => {
@@ -371,6 +392,28 @@ function Settings() {
                 <button type="submit" className="btn btn-primary">Lưu phòng mới</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal xác nhận tùy chỉnh */}
+      {confirmModal.show && (
+        <div className="modal-overlay" onClick={() => setConfirmModal(prev => ({ ...prev, show: false }))}>
+          <div className="modal-content small" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h3 style={{ color: 'var(--primary-blue)' }}>{confirmModal.title}</h3>
+              <button className="close-btn" onClick={() => setConfirmModal(prev => ({ ...prev, show: false }))}>&times;</button>
+            </div>
+            <div className="modal-body" style={{ padding: '20px 0', fontSize: '14px', lineHeight: '1.5' }}>
+              {confirmModal.message}
+            </div>
+            <div className="modal-footer" style={{ justifyContent: 'flex-end', gap: '10px', paddingTop: '15px' }}>
+              <button className="btn btn-outline" onClick={() => setConfirmModal(prev => ({ ...prev, show: false }))}>Hủy bỏ</button>
+              <button className="btn btn-danger" onClick={() => {
+                confirmModal.onConfirm();
+                setConfirmModal(prev => ({ ...prev, show: false }));
+              }}>Xác nhận</button>
+            </div>
           </div>
         </div>
       )}

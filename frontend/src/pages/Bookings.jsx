@@ -43,6 +43,23 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
   // Form Thêm Dịch vụ phụ thu
   const [newService, setNewService] = useState({ service_name: '', price: '', quantity: 1 });
 
+  // Custom Confirm Modal State
+  const [confirmModal, setConfirmModal] = useState({
+    show: false,
+    title: '',
+    message: '',
+    onConfirm: null
+  });
+
+  const showConfirm = (title, message, onConfirm) => {
+    setConfirmModal({
+      show: true,
+      title,
+      message,
+      onConfirm
+    });
+  };
+
   const toast = (message, type = 'success') => {
     window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, type } }));
   };
@@ -245,36 +262,38 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
 
   // Check-Out
   const handleCheckOut = async (id) => {
-    if (window.confirm('Khách thanh toán và trả phòng?')) {
-      try {
-        await api.checkOutBooking(id);
-        toast('Check-out trả phòng & thanh toán thành công!', 'success');
-        if (selectedBooking && selectedBooking.id === id) {
-          handleOpenDetails(id);
-        } else {
-          loadBookings();
-        }
-      } catch (err) {
-        toast(err.message || 'Lỗi Check-out', 'error');
+    try {
+      await api.checkOutBooking(id);
+      toast('Check-out trả phòng & thanh toán thành công!', 'success');
+      if (selectedBooking && selectedBooking.id === id) {
+        handleOpenDetails(id);
+      } else {
+        loadBookings();
       }
+    } catch (err) {
+      toast(err.message || 'Lỗi Check-out', 'error');
     }
   };
 
   // Hủy phòng
   const handleCancelBooking = async (id) => {
-    if (window.confirm('Bạn có chắc chắn muốn hủy đặt phòng này?')) {
-      try {
-        await api.cancelBooking(id);
-        toast('Hủy đặt phòng thành công!', 'success');
-        if (selectedBooking && selectedBooking.id === id) {
-          handleOpenDetails(id);
-        } else {
-          loadBookings();
+    showConfirm(
+      'Xác nhận hủy đặt phòng',
+      'Bạn có chắc chắn muốn hủy đặt phòng này không? Các thông tin đi kèm và trạng thái phòng sẽ bị cập nhật lại.',
+      async () => {
+        try {
+          await api.cancelBooking(id);
+          toast('Hủy đặt phòng thành công!', 'success');
+          if (selectedBooking && selectedBooking.id === id) {
+            handleOpenDetails(id);
+          } else {
+            loadBookings();
+          }
+        } catch (err) {
+          toast(err.message || 'Lỗi hủy đặt phòng', 'error');
         }
-      } catch (err) {
-        toast(err.message || 'Lỗi hủy đặt phòng', 'error');
       }
-    }
+    );
   };
 
   // Thêm dịch vụ
@@ -302,15 +321,19 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
 
   // Xóa dịch vụ
   const handleDeleteService = async (serviceId) => {
-    if (window.confirm('Bạn có muốn xóa dịch vụ này khỏi hóa đơn?')) {
-      try {
-        await api.deleteBookingService(serviceId);
-        toast('Đã xóa dịch vụ khỏi hóa đơn.', 'info');
-        handleOpenDetails(selectedBooking.id);
-      } catch (err) {
-        toast(err.message || 'Lỗi xóa dịch vụ.', 'error');
+    showConfirm(
+      'Xóa dịch vụ phụ thu',
+      'Bạn có chắc chắn muốn xóa dịch vụ này khỏi hóa đơn thanh toán?',
+      async () => {
+        try {
+          await api.deleteBookingService(serviceId);
+          toast('Đã xóa dịch vụ khỏi hóa đơn.', 'info');
+          handleOpenDetails(selectedBooking.id);
+        } catch (err) {
+          toast(err.message || 'Lỗi xóa dịch vụ.', 'error');
+        }
       }
-    }
+    );
   };
 
   const getStatusText = (status) => {
@@ -442,8 +465,8 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
                           </>
                         )}
                         {booking.status === 'checked_in' && (
-                          <button className="btn btn-accent btn-xs" onClick={() => handleCheckOut(booking.id)}>
-                            <LogOut size={12} /> Trả phòng
+                          <button className="btn btn-accent btn-xs" onClick={() => handleOpenDetails(booking.id)}>
+                            <LogOut size={12} /> Xem Hóa đơn & Trả phòng
                           </button>
                         )}
                       </div>
@@ -754,6 +777,28 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
                 )}
               </div>
               <button className="btn btn-outline" onClick={handleCloseDetails}>Đóng</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal xác nhận tùy chỉnh */}
+      {confirmModal.show && (
+        <div className="modal-overlay" onClick={() => setConfirmModal(prev => ({ ...prev, show: false }))}>
+          <div className="modal-content small" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h3 style={{ color: 'var(--primary-blue)' }}>{confirmModal.title}</h3>
+              <button className="close-btn" onClick={() => setConfirmModal(prev => ({ ...prev, show: false }))}>&times;</button>
+            </div>
+            <div className="modal-body" style={{ padding: '20px 0', fontSize: '14px', lineHeight: '1.5' }}>
+              {confirmModal.message}
+            </div>
+            <div className="modal-footer" style={{ justifyContent: 'flex-end', gap: '10px', paddingTop: '15px' }}>
+              <button className="btn btn-outline" onClick={() => setConfirmModal(prev => ({ ...prev, show: false }))}>Hủy bỏ</button>
+              <button className="btn btn-danger" onClick={() => {
+                confirmModal.onConfirm();
+                setConfirmModal(prev => ({ ...prev, show: false }));
+              }}>Xác nhận</button>
             </div>
           </div>
         </div>

@@ -54,21 +54,6 @@ function Dashboard({ onOpenBooking }) {
     }
   };
 
-  const handleCheckOut = async (bookingId) => {
-    if (window.confirm('Bạn có chắc chắn muốn thực hiện Check-out cho phòng này?')) {
-      try {
-        await api.checkOutBooking(bookingId);
-        toast('Trả phòng (Check-out) thành công!', 'success');
-        loadData();
-        if (onOpenBooking) {
-          onOpenBooking(bookingId); // Mở hóa đơn chi tiết để admin xem
-        }
-      } catch (err) {
-        toast(err.message || 'Lỗi khi thực hiện Check-out', 'error');
-      }
-    }
-  };
-
   const handleMarkCleaned = async (roomId) => {
     try {
       await api.updateRoomStatus(roomId, 'available');
@@ -253,8 +238,8 @@ function Dashboard({ onOpenBooking }) {
                       <td>{new Date(departure.check_in_date).toLocaleDateString('vi-VN')}</td>
                       <td className="font-bold">{formatVND(departure.total_price)}</td>
                       <td className="text-right">
-                        <button className="btn btn-accent btn-xs" onClick={() => handleCheckOut(departure.id)}>
-                          <LogOut size={12} /> Trả phòng & In Hóa đơn
+                        <button className="btn btn-accent btn-xs" onClick={() => onOpenBooking(departure.id)}>
+                          <LogOut size={12} /> Xem Hóa đơn & Trả phòng
                         </button>
                       </td>
                     </tr>

@@ -118,7 +118,7 @@ function Timeline({ onOpenBooking }) {
                     className={isToday(date) ? 'today-col' : ''}
                     style={{ minWidth: '60px' }}
                   >
-                    <div style={{ fontSize: '11px', color: var(--text-muted) }}>{getDayName(date)}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{getDayName(date)}</div>
                     <div style={{ fontSize: '14px', fontWeight: '700' }}>{date.getDate()}</div>
                     <div style={{ fontSize: '9px', fontWeight: 'normal' }}>Th{date.getMonth() + 1}</div>
                   </th>

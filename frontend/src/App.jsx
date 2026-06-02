@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Dashboard from './pages/Dashboard';
 import Rooms from './pages/Rooms';
 import Timeline from './pages/Timeline';
@@ -12,7 +12,11 @@ import {
   BookOpen, 
   Users, 
   Settings as SettingsIcon,
-  User
+  User,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Info as InfoIcon
 } from 'lucide-react';
 
 function App() {
@@ -21,6 +25,25 @@ function App() {
   // Trạng thái chia sẻ để mở popup chi tiết booking từ trang bất kỳ
   const [activeBookingId, setActiveBookingId] = useState(null);
 
+  // Trạng thái thông báo Toast
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    let timer;
+    const handleToast = (e) => {
+      setToast(e.detail);
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        setToast(null);
+      }, 3500);
+    };
+    window.addEventListener('show-toast', handleToast);
+    return () => {
+      window.removeEventListener('show-toast', handleToast);
+      clearTimeout(timer);
+    };
+  }, []);
+
   const handleOpenBookingDetails = (bookingId) => {
     setActiveBookingId(bookingId);
     setActiveTab('bookings'); // Chuyển hướng sang trang booking để hiển thị chi tiết
@@ -28,6 +51,31 @@ function App() {
 
   const handleCloseBookingDetails = () => {
     setActiveBookingId(null);
+  };
+
+  const renderToast = () => {
+    if (!toast) return null;
+    const { message, type } = toast;
+    
+    let Icon = CheckCircle2;
+    let iconColor = '#008009';
+    if (type === 'error') {
+      Icon = XCircle;
+      iconColor = '#d32f2f';
+    } else if (type === 'warning') {
+      Icon = AlertTriangle;
+      iconColor = '#febb02';
+    } else if (type === 'info') {
+      Icon = InfoIcon;
+      iconColor = '#006ce4';
+    }
+
+    return (
+      <div className={`toast-container ${type}`}>
+        <Icon size={20} style={{ color: iconColor }} />
+        <span className="toast-message">{message}</span>
+      </div>
+    );
   };
 
   const renderActiveView = () => {
@@ -144,6 +192,7 @@ function App() {
           {renderActiveView()}
         </div>
       </main>
+      {renderToast()}
     </div>
   );
 }

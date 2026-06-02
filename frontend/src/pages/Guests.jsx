@@ -29,12 +29,16 @@ function Guests() {
     loadGuests();
   };
 
+  const toast = (message, type = 'success') => {
+    window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, type } }));
+  };
+
   const handleOpenDetails = async (id) => {
     try {
       const details = await api.getGuestDetails(id);
       setSelectedGuest(details);
     } catch (err) {
-      alert(err.message || 'Lỗi lấy lịch sử khách hàng.');
+      toast(err.message || 'Lỗi lấy lịch sử khách hàng.', 'error');
     }
   };
 

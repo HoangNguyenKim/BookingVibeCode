@@ -36,6 +36,13 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ message: 'Thiếu thông tin phòng bắt buộc.' });
   }
 
+  const parsedFloor = parseInt(floor, 10);
+  const parsedTypeId = parseInt(room_type_id, 10);
+
+  if (isNaN(parsedFloor) || isNaN(parsedTypeId)) {
+    return res.status(400).json({ message: 'Tầng và Loại phòng phải là giá trị số hợp lệ.' });
+  }
+
   try {
     // Kiểm tra xem số phòng đã tồn tại chưa
     const checkRoom = await db.query('SELECT id FROM rooms WHERE room_number = @room_number', { room_number });
@@ -48,8 +55,8 @@ router.post('/', async (req, res) => {
        VALUES (@room_number, @floor, @room_type_id, @status)`,
       { 
         room_number, 
-        floor, 
-        room_type_id, 
+        floor: parsedFloor, 
+        room_type_id: parsedTypeId, 
         status: status || 'available' 
       }
     );
@@ -83,11 +90,23 @@ router.post('/types', async (req, res) => {
     return res.status(400).json({ message: 'Thiếu thông tin loại phòng bắt buộc.' });
   }
 
+  const parsedPrice = parseFloat(price_per_night);
+  const parsedCapacity = parseInt(capacity, 10);
+
+  if (isNaN(parsedPrice) || isNaN(parsedCapacity)) {
+    return res.status(400).json({ message: 'Giá phòng và Sức chứa phải là số hợp lệ.' });
+  }
+
   try {
     await db.query(
       `INSERT INTO room_types (name, price_per_night, capacity, description) 
        VALUES (@name, @price_per_night, @capacity, @description)`,
-      { name, price_per_night, capacity, description: description || '' }
+      { 
+        name, 
+        price_per_night: parsedPrice, 
+        capacity: parsedCapacity, 
+        description: description || '' 
+      }
     );
     res.status(201).json({ message: 'Thêm loại phòng thành công.' });
   } catch (error) {
@@ -100,12 +119,26 @@ router.put('/types/:id', async (req, res) => {
   const { id } = req.params;
   const { name, price_per_night, capacity, description } = req.body;
 
+  const parsedPrice = parseFloat(price_per_night);
+  const parsedCapacity = parseInt(capacity, 10);
+  const parsedId = parseInt(id, 10);
+
+  if (isNaN(parsedPrice) || isNaN(parsedCapacity) || isNaN(parsedId)) {
+    return res.status(400).json({ message: 'Thông tin loại phòng cập nhật không hợp lệ.' });
+  }
+
   try {
     await db.query(
       `UPDATE room_types 
        SET name = @name, price_per_night = @price_per_night, capacity = @capacity, description = @description
        WHERE id = @id`,
-      { id, name, price_per_night, capacity, description }
+      { 
+        id: parsedId, 
+        name, 
+        price_per_night: parsedPrice, 
+        capacity: parsedCapacity, 
+        description 
+      }
     );
     res.json({ message: 'Cập nhật loại phòng thành công.' });
   } catch (error) {

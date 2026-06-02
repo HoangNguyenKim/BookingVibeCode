@@ -27,13 +27,18 @@ function Rooms({ onOpenBooking }) {
     loadRooms();
   }, []);
 
+  const toast = (message, type = 'success') => {
+    window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, type } }));
+  };
+
   const handleUpdateStatus = async (roomId, newStatus) => {
     try {
       await api.updateRoomStatus(roomId, newStatus);
+      toast('Cập nhật trạng thái phòng thành công!', 'success');
       setSelectedRoom(null);
       loadRooms();
     } catch (err) {
-      alert(err.message || 'Lỗi khi cập nhật trạng thái phòng.');
+      toast(err.message || 'Lỗi khi cập nhật trạng thái phòng.', 'error');
     }
   };
 

@@ -28,12 +28,12 @@ router.get('/', async (req, res) => {
   }
 
   if (checkIn) {
-    sqlQuery += ` AND b.check_in_date >= @checkIn`;
+    sqlQuery += ` AND b.check_in_date >= CONVERT(DATE, @checkIn, 120)`;
     params.checkIn = checkIn;
   }
 
   if (checkOut) {
-    sqlQuery += ` AND b.check_out_date <= @checkOut`;
+    sqlQuery += ` AND b.check_out_date <= CONVERT(DATE, @checkOut, 120)`;
     params.checkOut = checkOut;
   }
 
@@ -65,8 +65,8 @@ router.get('/available-rooms', async (req, res) => {
           SELECT room_id 
           FROM bookings 
           WHERE status IN ('booked', 'checked_in')
-            AND check_in_date < @checkOut 
-            AND check_out_date > @checkIn
+            AND check_in_date < CONVERT(DATE, @checkOut, 120) 
+            AND check_out_date > CONVERT(DATE, @checkIn, 120)
         )
       ORDER BY r.room_number ASC
     `;
@@ -123,6 +123,13 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ message: 'Vui lòng điền đầy đủ các trường thông tin bắt buộc.' });
   }
 
+  const parsedRoomId = parseInt(room_id, 10);
+  const parsedTotalPrice = parseFloat(total_price);
+
+  if (isNaN(parsedRoomId) || isNaN(parsedTotalPrice)) {
+    return res.status(400).json({ message: 'Mã phòng và giá tiền phải là số hợp lệ.' });
+  }
+
   try {
     // 1. Kiểm tra/Tạo khách hàng
     let guestId;
@@ -149,9 +156,9 @@ router.post('/', async (req, res) => {
       SELECT id FROM bookings 
       WHERE room_id = @room_id 
         AND status IN ('booked', 'checked_in')
-        AND check_in_date < @check_out_date 
-        AND check_out_date > @check_in_date
-    `, { room_id, check_in_date, check_out_date });
+        AND check_in_date < CONVERT(DATE, @check_out_date, 120) 
+        AND check_out_date > CONVERT(DATE, @check_in_date, 120)
+    `, { room_id: parsedRoomId, check_in_date, check_out_date });
 
     if (checkOverlap.recordset.length > 0) {
       return res.status(400).json({ message: 'Phòng này đã có người đặt trong thời gian bạn chọn.' });
@@ -161,15 +168,15 @@ router.post('/', async (req, res) => {
     const bookingRes = await db.query(`
       INSERT INTO bookings (guest_id, room_id, check_in_date, check_out_date, total_price, status)
       OUTPUT INSERTED.id
-      VALUES (@guestId, @room_id, @check_in_date, @check_out_date, @total_price, 'booked')
-    `, { guestId, room_id, check_in_date, check_out_date, total_price });
+      VALUES (@guestId, @room_id, CONVERT(DATE, @check_in_date, 120), CONVERT(DATE, @check_out_date, 120), @total_price, 'booked')
+    `, { guestId, room_id: parsedRoomId, check_in_date, check_out_date, total_price: parsedTotalPrice });
 
     const newBookingId = bookingRes.recordset[0].id;
 
     // 4. Nếu check-in là ngày hôm nay, tự động cập nhật trạng thái phòng thành 'booked' (hoặc giữ nguyên)
     const checkInToday = new Date(check_in_date).toDateString() === new Date().toDateString();
     if (checkInToday) {
-      await db.query("UPDATE rooms SET status = 'booked' WHERE id = @room_id", { room_id });
+      await db.query("UPDATE rooms SET status = 'booked' WHERE id = @room_id", { room_id: parsedRoomId });
     }
 
     res.status(201).json({ message: 'Tạo đặt phòng thành công.', bookingId: newBookingId });
@@ -274,15 +281,23 @@ router.post('/:id/services', async (req, res) => {
     return res.status(400).json({ message: 'Thiếu tên dịch vụ hoặc đơn giá.' });
   }
 
+  const parsedBookingId = parseInt(id, 10);
+  const parsedPrice = parseFloat(price);
+  const parsedQuantity = parseInt(quantity, 10) || 1;
+
+  if (isNaN(parsedBookingId) || isNaN(parsedPrice) || isNaN(parsedQuantity)) {
+    return res.status(400).json({ message: 'Thông tin dịch vụ không hợp lệ.' });
+  }
+
   try {
     await db.query(`
       INSERT INTO booking_services (booking_id, service_name, price, quantity)
       VALUES (@booking_id, @service_name, @price, @quantity)
     `, {
-      booking_id: id,
+      booking_id: parsedBookingId,
       service_name,
-      price,
-      quantity: quantity || 1
+      price: parsedPrice,
+      quantity: parsedQuantity
     });
 
     res.status(201).json({ message: 'Thêm dịch vụ thành công.' });

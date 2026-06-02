@@ -10,9 +10,15 @@ function Settings() {
   // Modals & Forms
   const [showAddRoomType, setShowAddRoomType] = useState(false);
   const [newRoomType, setNewRoomType] = useState({ name: '', price_per_night: '', capacity: 2, description: '' });
+  const [roomTypeErrors, setRoomTypeErrors] = useState({});
   
   const [showAddRoom, setShowAddRoom] = useState(false);
   const [newRoom, setNewRoom] = useState({ room_number: '', floor: '', room_type_id: '', status: 'available' });
+  const [roomErrors, setRoomErrors] = useState({});
+
+  const toast = (message, type = 'success') => {
+    window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, type } }));
+  };
 
   const loadSettingsData = async () => {
     setLoading(true);
@@ -34,35 +40,61 @@ function Settings() {
 
   const handleAddRoomType = async (e) => {
     e.preventDefault();
-    if (!newRoomType.name || !newRoomType.price_per_night) {
-      alert('Vui lòng điền tên loại phòng và giá tiền.');
+    const errors = {};
+    if (!newRoomType.name.trim()) {
+      errors.name = 'Vui lòng nhập tên loại phòng.';
+    }
+    if (!newRoomType.price_per_night || parseFloat(newRoomType.price_per_night) <= 0) {
+      errors.price_per_night = 'Vui lòng nhập giá tiền hợp lệ lớn hơn 0.';
+    }
+    if (!newRoomType.capacity || parseInt(newRoomType.capacity, 10) <= 0) {
+      errors.capacity = 'Sức chứa tối thiểu là 1 người.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setRoomTypeErrors(errors);
       return;
     }
+
+    setRoomTypeErrors({});
     try {
       await api.createRoomType(newRoomType);
-      alert('Thêm loại phòng thành công!');
+      toast('Thêm loại phòng mới thành công!', 'success');
       setShowAddRoomType(false);
       setNewRoomType({ name: '', price_per_night: '', capacity: 2, description: '' });
       loadSettingsData();
     } catch (err) {
-      alert(err.message || 'Lỗi thêm loại phòng.');
+      toast(err.message || 'Lỗi thêm loại phòng.', 'error');
     }
   };
 
   const handleAddRoom = async (e) => {
     e.preventDefault();
-    if (!newRoom.room_number || !newRoom.floor || !newRoom.room_type_id) {
-      alert('Vui lòng điền số phòng, tầng và loại phòng.');
+    const errors = {};
+    if (!newRoom.room_number.trim()) {
+      errors.room_number = 'Vui lòng nhập số phòng.';
+    }
+    if (!newRoom.floor || parseInt(newRoom.floor, 10) <= 0) {
+      errors.floor = 'Vui lòng nhập tầng hợp lệ (số dương).';
+    }
+    if (!newRoom.room_type_id) {
+      errors.room_type_id = 'Vui lòng chọn loại phòng.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setRoomErrors(errors);
       return;
     }
+
+    setRoomErrors({});
     try {
       await api.createRoom(newRoom);
-      alert('Thêm phòng mới thành công!');
+      toast('Thêm phòng mới thành công!', 'success');
       setShowAddRoom(false);
       setNewRoom({ room_number: '', floor: '', room_type_id: '', status: 'available' });
       loadSettingsData();
     } catch (err) {
-      alert(err.message || 'Lỗi thêm phòng.');
+      toast(err.message || 'Lỗi thêm phòng.', 'error');
     }
   };
 
@@ -70,10 +102,10 @@ function Settings() {
     if (window.confirm(`Bạn có chắc chắn muốn xóa phòng ${roomNumber}?`)) {
       try {
         await api.deleteRoom(roomId);
-        alert('Xóa phòng thành công.');
+        toast(`Xóa thành công phòng ${roomNumber}!`, 'success');
         loadSettingsData();
       } catch (err) {
-        alert(err.message || 'Lỗi khi xóa phòng. Có thể phòng đã có lịch đặt trước.');
+        toast(err.message || 'Lỗi khi xóa phòng. Có thể phòng đã có lịch đặt trước.', 'error');
       }
     }
   };
@@ -213,11 +245,11 @@ function Settings() {
 
       {/* Modal: Thêm loại phòng */}
       {showAddRoomType && (
-        <div className="modal-overlay" onClick={() => setShowAddRoomType(false)}>
+        <div className="modal-overlay" onClick={() => { setShowAddRoomType(false); setRoomTypeErrors({}); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Thêm loại phòng mới</h3>
-              <button className="close-btn" onClick={() => setShowAddRoomType(false)}>&times;</button>
+              <button className="close-btn" onClick={() => { setShowAddRoomType(false); setRoomTypeErrors({}); }}>&times;</button>
             </div>
             <form onSubmit={handleAddRoomType}>
               <div className="modal-body">
@@ -225,32 +257,35 @@ function Settings() {
                   <label>Tên loại phòng *</label>
                   <input 
                     type="text" 
-                    required 
                     value={newRoomType.name}
                     onChange={(e) => setNewRoomType(prev => ({ ...prev, name: e.target.value }))}
+                    className={roomTypeErrors.name ? 'input-invalid' : ''}
                     placeholder="Deluxe Double, Standard Family..."
                   />
+                  {roomTypeErrors.name && <span className="form-error">{roomTypeErrors.name}</span>}
                 </div>
                 <div className="form-grid">
                   <div className="form-group">
                     <label>Giá tiền / đêm (VND) *</label>
                     <input 
                       type="number" 
-                      required 
                       value={newRoomType.price_per_night}
                       onChange={(e) => setNewRoomType(prev => ({ ...prev, price_per_night: e.target.value }))}
+                      className={roomTypeErrors.price_per_night ? 'input-invalid' : ''}
                       placeholder="800000"
                     />
+                    {roomTypeErrors.price_per_night && <span className="form-error">{roomTypeErrors.price_per_night}</span>}
                   </div>
                   <div className="form-group">
                     <label>Sức chứa tối đa (Khách) *</label>
                     <input 
                       type="number" 
                       min="1" 
-                      required 
                       value={newRoomType.capacity}
                       onChange={(e) => setNewRoomType(prev => ({ ...prev, capacity: parseInt(e.target.value, 10) }))}
+                      className={roomTypeErrors.capacity ? 'input-invalid' : ''}
                     />
+                    {roomTypeErrors.capacity && <span className="form-error">{roomTypeErrors.capacity}</span>}
                   </div>
                 </div>
                 <div className="form-group">
@@ -264,7 +299,7 @@ function Settings() {
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-outline" onClick={() => setShowAddRoomType(false)}>Hủy bỏ</button>
+                <button type="button" className="btn btn-outline" onClick={() => { setShowAddRoomType(false); setRoomTypeErrors({}); }}>Hủy bỏ</button>
                 <button type="submit" className="btn btn-primary">Lưu loại phòng</button>
               </div>
             </form>
@@ -274,11 +309,11 @@ function Settings() {
 
       {/* Modal: Thêm phòng cụ thể */}
       {showAddRoom && (
-        <div className="modal-overlay" onClick={() => setShowAddRoom(false)}>
+        <div className="modal-overlay" onClick={() => { setShowAddRoom(false); setRoomErrors({}); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Thêm phòng mới</h3>
-              <button className="close-btn" onClick={() => setShowAddRoom(false)}>&times;</button>
+              <button className="close-btn" onClick={() => { setShowAddRoom(false); setRoomErrors({}); }}>&times;</button>
             </div>
             <form onSubmit={handleAddRoom}>
               <div className="modal-body">
@@ -287,35 +322,38 @@ function Settings() {
                     <label>Số phòng *</label>
                     <input 
                       type="text" 
-                      required 
                       value={newRoom.room_number}
                       onChange={(e) => setNewRoom(prev => ({ ...prev, room_number: e.target.value }))}
+                      className={roomErrors.room_number ? 'input-invalid' : ''}
                       placeholder="304, 401..."
                     />
+                    {roomErrors.room_number && <span className="form-error">{roomErrors.room_number}</span>}
                   </div>
                   <div className="form-group">
                     <label>Tầng *</label>
                     <input 
                       type="number" 
-                      required 
                       value={newRoom.floor}
                       onChange={(e) => setNewRoom(prev => ({ ...prev, floor: e.target.value }))}
+                      className={roomErrors.floor ? 'input-invalid' : ''}
                       placeholder="3"
                     />
+                    {roomErrors.floor && <span className="form-error">{roomErrors.floor}</span>}
                   </div>
                 </div>
                 <div className="form-group">
                   <label>Loại phòng *</label>
                   <select 
-                    required 
                     value={newRoom.room_type_id}
                     onChange={(e) => setNewRoom(prev => ({ ...prev, room_type_id: e.target.value }))}
+                    className={roomErrors.room_type_id ? 'input-invalid' : ''}
                   >
                     <option value="">-- Chọn loại phòng --</option>
                     {roomTypes.map(type => (
                       <option key={type.id} value={type.id}>{type.name} ({formatVND(type.price_per_night)}/đêm)</option>
                     ))}
                   </select>
+                  {roomErrors.room_type_id && <span className="form-error">{roomErrors.room_type_id}</span>}
                 </div>
                 <div className="form-group">
                   <label>Trạng thái ban đầu</label>
@@ -329,7 +367,7 @@ function Settings() {
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-outline" onClick={() => setShowAddRoom(false)}>Hủy bỏ</button>
+                <button type="button" className="btn btn-outline" onClick={() => { setShowAddRoom(false); setRoomErrors({}); }}>Hủy bỏ</button>
                 <button type="submit" className="btn btn-primary">Lưu phòng mới</button>
               </div>
             </form>

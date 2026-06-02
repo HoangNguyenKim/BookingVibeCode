@@ -36,8 +36,16 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
   const [searchRoomsLoading, setSearchRoomsLoading] = useState(false);
   const [selectedRoomPrice, setSelectedRoomPrice] = useState(0);
 
+  // Trạng thái lỗi Validation
+  const [bookingErrors, setBookingErrors] = useState({});
+  const [serviceError, setServiceError] = useState('');
+
   // Form Thêm Dịch vụ phụ thu
   const [newService, setNewService] = useState({ service_name: '', price: '', quantity: 1 });
+
+  const toast = (message, type = 'success') => {
+    window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, type } }));
+  };
 
   const loadBookings = async () => {
     setLoading(true);
@@ -67,7 +75,7 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
       const details = await api.getBookingDetails(id);
       setSelectedBooking(details);
     } catch (err) {
-      alert(err.message || 'Không thể tải chi tiết đặt phòng.');
+      toast(err.message || 'Không thể tải chi tiết đặt phòng.', 'error');
     }
   };
 
@@ -87,24 +95,59 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
   // Tìm phòng trống theo khoảng ngày check-in/out
   const handleFindRooms = async () => {
     const { check_in_date, check_out_date } = newBooking;
-    if (!check_in_date || !check_out_date) {
-      alert('Vui lòng chọn ngày Check-in và Check-out trước.');
+    const errors = { ...bookingErrors };
+    let hasError = false;
+
+    if (!check_in_date) {
+      errors.check_in_date = 'Vui lòng chọn ngày Check-in.';
+      hasError = true;
+    } else {
+      delete errors.check_in_date;
+    }
+
+    if (!check_out_date) {
+      errors.check_out_date = 'Vui lòng chọn ngày Check-out.';
+      hasError = true;
+    } else {
+      delete errors.check_out_date;
+    }
+
+    if (check_in_date && check_out_date) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (check_in_date < todayStr) {
+        errors.check_in_date = 'Ngày Check-in không được nhỏ hơn ngày hôm nay.';
+        hasError = true;
+      }
+      if (new Date(check_in_date) >= new Date(check_out_date)) {
+        errors.check_out_date = 'Ngày Check-out phải sau ngày Check-in ít nhất 1 ngày.';
+        hasError = true;
+      } else if (!hasError) {
+        delete errors.check_out_date;
+      }
+    }
+
+    if (hasError) {
+      setBookingErrors(errors);
       return;
     }
-    if (new Date(check_in_date) >= new Date(check_out_date)) {
-      alert('Ngày Check-out phải lớn hơn ngày Check-in.');
-      return;
-    }
+
+    // Xóa các lỗi về ngày nếu hợp lệ
+    const updatedErrors = { ...bookingErrors };
+    delete updatedErrors.check_in_date;
+    delete updatedErrors.check_out_date;
+    setBookingErrors(updatedErrors);
 
     setSearchRoomsLoading(true);
     try {
       const rooms = await api.getAvailableRooms(check_in_date, check_out_date);
       setAvailableRooms(rooms);
       if (rooms.length === 0) {
-        alert('Rất tiếc, không còn phòng nào trống trong khoảng thời gian này.');
+        toast('Rất tiếc, không còn phòng nào trống trong khoảng thời gian này.', 'warning');
+      } else {
+        toast(`Đã tìm thấy ${rooms.length} phòng khả dụng!`, 'info');
       }
     } catch (err) {
-      alert(err.message || 'Lỗi khi tìm phòng trống.');
+      toast(err.message || 'Lỗi khi tìm phòng trống.', 'error');
     } finally {
       setSearchRoomsLoading(false);
     }
@@ -133,17 +176,46 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
     const room = availableRooms.find(r => r.id === parseInt(roomId, 10));
     setSelectedRoomPrice(room ? room.price_per_night : 0);
     setNewBooking(prev => ({ ...prev, room_id: roomId }));
+    
+    if (roomId) {
+      const updatedErrors = { ...bookingErrors };
+      delete updatedErrors.room_id;
+      setBookingErrors(updatedErrors);
+    }
   };
 
   const handleCreateBooking = async (e) => {
     e.preventDefault();
+    const errors = {};
+    
+    if (!newBooking.full_name.trim()) {
+      errors.full_name = 'Vui lòng nhập tên khách hàng.';
+    }
+    
+    const phoneRegex = /^[0-9]{10,11}$/;
+    if (!newBooking.phone.trim()) {
+      errors.phone = 'Vui lòng nhập số điện thoại.';
+    } else if (!phoneRegex.test(newBooking.phone.trim())) {
+      errors.phone = 'Số điện thoại không hợp lệ (phải gồm 10 - 11 chữ số).';
+    }
+
+    if (newBooking.email.trim() && !/\S+@\S+\.\S+/.test(newBooking.email)) {
+      errors.email = 'Email không đúng định dạng.';
+    }
+
     if (!newBooking.room_id) {
-      alert('Vui lòng chọn một phòng trống.');
+      errors.room_id = 'Vui lòng tìm và chọn một phòng khả dụng.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setBookingErrors(errors);
       return;
     }
+
+    setBookingErrors({});
     try {
       await api.createBooking(newBooking);
-      alert('Tạo đặt phòng thành công!');
+      toast('Tạo đặt phòng mới thành công!', 'success');
       setShowCreateModal(false);
       setNewBooking({
         full_name: '', phone: '', email: '', id_card_number: '',
@@ -152,7 +224,7 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
       setAvailableRooms([]);
       loadBookings();
     } catch (err) {
-      alert(err.message || 'Lỗi khi tạo đặt phòng.');
+      toast(err.message || 'Lỗi khi tạo đặt phòng.', 'error');
     }
   };
 
@@ -160,14 +232,14 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
   const handleCheckIn = async (id) => {
     try {
       await api.checkInBooking(id);
-      alert('Nhận phòng thành công!');
+      toast('Nhận phòng (Check-in) thành công!', 'success');
       if (selectedBooking && selectedBooking.id === id) {
         handleOpenDetails(id);
       } else {
         loadBookings();
       }
     } catch (err) {
-      alert(err.message || 'Lỗi Check-in');
+      toast(err.message || 'Lỗi Check-in', 'error');
     }
   };
 
@@ -176,14 +248,14 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
     if (window.confirm('Khách thanh toán và trả phòng?')) {
       try {
         await api.checkOutBooking(id);
-        alert('Trả phòng thành công. Phòng được chuyển sang trạng thái dọn dẹp.');
+        toast('Check-out trả phòng & thanh toán thành công!', 'success');
         if (selectedBooking && selectedBooking.id === id) {
           handleOpenDetails(id);
         } else {
           loadBookings();
         }
       } catch (err) {
-        alert(err.message || 'Lỗi Check-out');
+        toast(err.message || 'Lỗi Check-out', 'error');
       }
     }
   };
@@ -193,14 +265,14 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
     if (window.confirm('Bạn có chắc chắn muốn hủy đặt phòng này?')) {
       try {
         await api.cancelBooking(id);
-        alert('Hủy phòng thành công.');
+        toast('Hủy đặt phòng thành công!', 'success');
         if (selectedBooking && selectedBooking.id === id) {
           handleOpenDetails(id);
         } else {
           loadBookings();
         }
       } catch (err) {
-        alert(err.message || 'Lỗi hủy đặt phòng');
+        toast(err.message || 'Lỗi hủy đặt phòng', 'error');
       }
     }
   };
@@ -208,16 +280,23 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
   // Thêm dịch vụ
   const handleAddService = async (e) => {
     e.preventDefault();
-    if (!newService.service_name || !newService.price) {
-      alert('Vui lòng điền tên dịch vụ và giá.');
+    if (!newService.service_name.trim()) {
+      setServiceError('Vui lòng nhập tên dịch vụ phụ thu.');
       return;
     }
+    if (!newService.price || parseFloat(newService.price) <= 0) {
+      setServiceError('Vui lòng nhập giá dịch vụ hợp lệ.');
+      return;
+    }
+
+    setServiceError('');
     try {
       await api.addBookingService(selectedBooking.id, newService);
+      toast('Thêm dịch vụ phụ thu vào hóa đơn thành công!', 'success');
       setNewService({ service_name: '', price: '', quantity: 1 });
       handleOpenDetails(selectedBooking.id);
     } catch (err) {
-      alert(err.message || 'Lỗi thêm dịch vụ.');
+      toast(err.message || 'Lỗi thêm dịch vụ.', 'error');
     }
   };
 
@@ -226,9 +305,10 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
     if (window.confirm('Bạn có muốn xóa dịch vụ này khỏi hóa đơn?')) {
       try {
         await api.deleteBookingService(serviceId);
+        toast('Đã xóa dịch vụ khỏi hóa đơn.', 'info');
         handleOpenDetails(selectedBooking.id);
       } catch (err) {
-        alert(err.message || 'Lỗi xóa dịch vụ.');
+        toast(err.message || 'Lỗi xóa dịch vụ.', 'error');
       }
     }
   };
@@ -378,11 +458,11 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
 
       {/* Modal: Đặt phòng mới */}
       {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+        <div className="modal-overlay" onClick={() => { setShowCreateModal(false); setBookingErrors({}); }}>
           <div className="modal-content large" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Tạo phiếu đặt phòng mới</h3>
-              <button className="close-btn" onClick={() => setShowCreateModal(false)}>&times;</button>
+              <button className="close-btn" onClick={() => { setShowCreateModal(false); setBookingErrors({}); }}>&times;</button>
             </div>
             <form onSubmit={handleCreateBooking}>
               <div className="modal-body">
@@ -394,30 +474,34 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
                     <label>Họ và tên *</label>
                     <input 
                       type="text" 
-                      required 
                       value={newBooking.full_name}
                       onChange={(e) => setNewBooking(prev => ({ ...prev, full_name: e.target.value }))}
+                      className={bookingErrors.full_name ? 'input-invalid' : ''}
                       placeholder="Nguyễn Văn A"
                     />
+                    {bookingErrors.full_name && <span className="form-error">{bookingErrors.full_name}</span>}
                   </div>
                   <div className="form-group">
                     <label>Số điện thoại *</label>
                     <input 
                       type="text" 
-                      required 
                       value={newBooking.phone}
                       onChange={(e) => setNewBooking(prev => ({ ...prev, phone: e.target.value }))}
+                      className={bookingErrors.phone ? 'input-invalid' : ''}
                       placeholder="0912345678"
                     />
+                    {bookingErrors.phone && <span className="form-error">{bookingErrors.phone}</span>}
                   </div>
                   <div className="form-group">
                     <label>Email (nếu có)</label>
                     <input 
-                      type="email" 
+                      type="text" 
                       value={newBooking.email}
                       onChange={(e) => setNewBooking(prev => ({ ...prev, email: e.target.value }))}
+                      className={bookingErrors.email ? 'input-invalid' : ''}
                       placeholder="email@example.com"
                     />
+                    {bookingErrors.email && <span className="form-error">{bookingErrors.email}</span>}
                   </div>
                   <div className="form-group">
                     <label>Số CCCD / Passport</label>
@@ -438,19 +522,21 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
                     <label>Ngày Check-in *</label>
                     <input 
                       type="date" 
-                      required 
                       value={newBooking.check_in_date}
                       onChange={(e) => setNewBooking(prev => ({ ...prev, check_in_date: e.target.value }))}
+                      className={bookingErrors.check_in_date ? 'input-invalid' : ''}
                     />
+                    {bookingErrors.check_in_date && <span className="form-error">{bookingErrors.check_in_date}</span>}
                   </div>
                   <div className="form-group">
                     <label>Ngày Check-out *</label>
                     <input 
                       type="date" 
-                      required 
                       value={newBooking.check_out_date}
                       onChange={(e) => setNewBooking(prev => ({ ...prev, check_out_date: e.target.value }))}
+                      className={bookingErrors.check_out_date ? 'input-invalid' : ''}
                     />
+                    {bookingErrors.check_out_date && <span className="form-error">{bookingErrors.check_out_date}</span>}
                   </div>
                   <div className="form-group" style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '24px' }}>
                     <button type="button" className="btn btn-accent w-full" onClick={handleFindRooms}>
@@ -459,14 +545,14 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
                   </div>
                 </div>
 
-                {availableRooms.length > 0 ? (
-                  <div className="form-grid">
+                {availableRooms.length > 0 && (
+                  <div className="form-grid" style={{ marginTop: '16px' }}>
                     <div className="form-group full-width">
                       <label>Chọn phòng khả dụng *</label>
                       <select 
-                        required 
                         value={newBooking.room_id} 
                         onChange={handleRoomChange}
+                        className={bookingErrors.room_id ? 'input-invalid' : ''}
                       >
                         <option value="">-- Chọn phòng trống --</option>
                         {availableRooms.map(room => (
@@ -475,16 +561,19 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
                           </option>
                         ))}
                       </select>
+                      {bookingErrors.room_id && <span className="form-error">{bookingErrors.room_id}</span>}
                     </div>
                   </div>
-                ) : (
-                  <div className="alert-box" style={{ margin: '10px 0' }}>
+                )}
+
+                {availableRooms.length === 0 && (
+                  <div className="alert-box" style={{ margin: '16px 0 0 0' }}>
                     💡 Hãy nhập khoảng ngày đến/đi và bấm <strong>Tìm phòng trống</strong> để hiển thị danh sách phòng trống tương ứng.
                   </div>
                 )}
 
                 {newBooking.total_price > 0 && (
-                  <div className="confirmation-slip" style={{ borderStyle: 'solid', borderColor: 'var(--status-available-color)' }}>
+                  <div className="confirmation-slip" style={{ borderStyle: 'solid', borderColor: 'var(--status-available-color)', marginTop: '20px' }}>
                     <div className="slip-total">
                       <span>Tổng chi phí tiền phòng dự kiến:</span>
                       <span style={{ color: 'var(--status-available-color)' }}>{formatVND(newBooking.total_price)}</span>
@@ -496,7 +585,7 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
                 )}
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-outline" onClick={() => setShowCreateModal(false)}>Hủy bỏ</button>
+                <button type="button" className="btn btn-outline" onClick={() => { setShowCreateModal(false); setBookingErrors({}); }}>Hủy bỏ</button>
                 <button type="submit" className="btn btn-primary" disabled={!newBooking.room_id}>Xác nhận đặt phòng</button>
               </div>
             </form>
@@ -595,44 +684,46 @@ function Bookings({ activeBookingId, onCloseBookingDetails }) {
 
               {/* Form thêm dịch vụ nhanh (Chỉ hiển thị khi đang checked_in) */}
               {selectedBooking.status === 'checked_in' && (
-                <form onSubmit={handleAddService} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', marginTop: '16px', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: '#fafbfc', borderRadius: '4px' }}>
-                  <div style={{ flex: 2, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Tên dịch vụ / phụ thu</label>
-                    <input 
-                      type="text" 
-                      placeholder="Nước ngọt mini-bar, giặt là..." 
-                      style={{ padding: '6px', fontSize: '13px', border: '1px solid var(--border-color)' }}
-                      value={newService.service_name}
-                      onChange={(e) => setNewService(prev => ({ ...prev, service_name: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Đơn giá (VND)</label>
-                    <input 
-                      type="number" 
-                      placeholder="20000" 
-                      style={{ padding: '6px', fontSize: '13px', border: '1px solid var(--border-color)' }}
-                      value={newService.price}
-                      onChange={(e) => setNewService(prev => ({ ...prev, price: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div style={{ width: '70px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Số lượng</label>
-                    <input 
-                      type="number" 
-                      min="1"
-                      style={{ padding: '6px', fontSize: '13px', border: '1px solid var(--border-color)' }}
-                      value={newService.quantity}
-                      onChange={(e) => setNewService(prev => ({ ...prev, quantity: parseInt(e.target.value, 10) }))}
-                      required
-                    />
-                  </div>
-                  <button type="submit" className="btn btn-primary" style={{ padding: '8px 12px', fontSize: '13px' }}>
-                    <PlusCircle size={14} /> Thêm dịch vụ
-                  </button>
-                </form>
+                <div style={{ marginTop: '16px' }}>
+                  {serviceError && <div className="form-error" style={{ marginBottom: '8px' }}>⚠️ {serviceError}</div>}
+                  <form onSubmit={handleAddService} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: '#fafbfc', borderRadius: '4px' }}>
+                    <div style={{ flex: 2, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Tên dịch vụ / phụ thu *</label>
+                      <input 
+                        type="text" 
+                        placeholder="Nước ngọt mini-bar, giặt là..." 
+                        style={{ padding: '6px', fontSize: '13px', border: '1px solid var(--border-color)' }}
+                        value={newService.service_name}
+                        onChange={(e) => setNewService(prev => ({ ...prev, service_name: e.target.value }))}
+                        className={serviceError && !newService.service_name.trim() ? 'input-invalid' : ''}
+                      />
+                    </div>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Đơn giá (VND) *</label>
+                      <input 
+                        type="number" 
+                        placeholder="20000" 
+                        style={{ padding: '6px', fontSize: '13px', border: '1px solid var(--border-color)' }}
+                        value={newService.price}
+                        onChange={(e) => setNewService(prev => ({ ...prev, price: e.target.value }))}
+                        className={serviceError && (!newService.price || parseFloat(newService.price) <= 0) ? 'input-invalid' : ''}
+                      />
+                    </div>
+                    <div style={{ width: '70px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Số lượng</label>
+                      <input 
+                        type="number" 
+                        min="1"
+                        style={{ padding: '6px', fontSize: '13px', border: '1px solid var(--border-color)' }}
+                        value={newService.quantity}
+                        onChange={(e) => setNewService(prev => ({ ...prev, quantity: parseInt(e.target.value, 10) }))}
+                      />
+                    </div>
+                    <button type="submit" className="btn btn-primary" style={{ padding: '8px 12px', fontSize: '13px' }}>
+                      <PlusCircle size={14} /> Thêm dịch vụ
+                    </button>
+                  </form>
+                </div>
               )}
 
               {/* Tổng hóa đơn thanh toán */}

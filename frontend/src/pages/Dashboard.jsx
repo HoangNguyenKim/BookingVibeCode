@@ -40,12 +40,17 @@ function Dashboard({ onOpenBooking }) {
     loadData();
   }, []);
 
+  const toast = (message, type = 'success') => {
+    window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, type } }));
+  };
+
   const handleCheckIn = async (bookingId) => {
     try {
       await api.checkInBooking(bookingId);
+      toast('Nhận phòng (Check-in) thành công!', 'success');
       loadData();
     } catch (err) {
-      alert(err.message || 'Lỗi khi thực hiện Check-in');
+      toast(err.message || 'Lỗi khi thực hiện Check-in', 'error');
     }
   };
 
@@ -53,12 +58,13 @@ function Dashboard({ onOpenBooking }) {
     if (window.confirm('Bạn có chắc chắn muốn thực hiện Check-out cho phòng này?')) {
       try {
         await api.checkOutBooking(bookingId);
+        toast('Trả phòng (Check-out) thành công!', 'success');
         loadData();
         if (onOpenBooking) {
           onOpenBooking(bookingId); // Mở hóa đơn chi tiết để admin xem
         }
       } catch (err) {
-        alert(err.message || 'Lỗi khi thực hiện Check-out');
+        toast(err.message || 'Lỗi khi thực hiện Check-out', 'error');
       }
     }
   };
@@ -66,9 +72,10 @@ function Dashboard({ onOpenBooking }) {
   const handleMarkCleaned = async (roomId) => {
     try {
       await api.updateRoomStatus(roomId, 'available');
+      toast('Phòng đã dọn dẹp sạch sẽ, sẵn sàng đón khách!', 'success');
       loadData();
     } catch (err) {
-      alert(err.message || 'Lỗi khi cập nhật trạng thái phòng');
+      toast(err.message || 'Lỗi khi cập nhật trạng thái phòng', 'error');
     }
   };
 
